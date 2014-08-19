@@ -1,5 +1,6 @@
 // Load modules
 
+var Fs = require('fs');
 var Lab = require('lab');
 var Path = require('path');
 var Hoek = require('../lib');
@@ -40,7 +41,7 @@ describe('Hoek', function () {
 
     describe('#clone', function () {
 
-        it('should clone a nested object', function (done) {
+        it('clones a nested object', function (done) {
 
             var a = nestedObj;
             var b = Hoek.clone(a);
@@ -50,7 +51,7 @@ describe('Hoek', function () {
             done();
         });
 
-        it('should clone a null object', function (done) {
+        it('clones a null object', function (done) {
 
             var b = Hoek.clone(null);
 
@@ -81,7 +82,7 @@ describe('Hoek', function () {
             done();
         });
 
-        it('should properly clone circular reference', function (done) {
+        it('clones circular reference', function (done) {
 
             var x = {
                 'z': new Date()
@@ -98,7 +99,27 @@ describe('Hoek', function () {
             done();
         });
 
-        it('should properly clone deeply nested object', function (done) {
+        it('clones an object with a null prototype', function (done) {
+
+            var obj = {};
+            obj.__proto__ = null;
+            var b = Hoek.clone(obj);
+
+            expect(b).to.deep.equal(obj);
+            done();
+        });
+
+        it('clones an object with an undefined prototype', function (done) {
+
+            var obj = {};
+            obj.__proto__ = undefined;
+            var b = Hoek.clone(obj);
+
+            expect(b).to.deep.equal(obj);
+            done();
+        });
+
+        it('clones deeply nested object', function (done) {
 
             var a = {
                 x: {
@@ -119,7 +140,7 @@ describe('Hoek', function () {
             done();
         });
 
-        it('should properly clone arrays', function (done) {
+        it('clones arrays', function (done) {
 
             var a = [1, 2, 3];
 
@@ -129,7 +150,7 @@ describe('Hoek', function () {
             done();
         });
 
-        it('should perform actual copy for shallow keys (no pass by reference)', function (done) {
+        it('performs actual copy for shallow keys (no pass by reference)', function (done) {
 
             var x = Hoek.clone(nestedObj);
             var y = Hoek.clone(nestedObj);
@@ -154,7 +175,7 @@ describe('Hoek', function () {
             done();
         });
 
-        it('should perform actual copy for deep keys (no pass by reference)', function (done) {
+        it('performs actual copy for deep keys (no pass by reference)', function (done) {
 
             var x = Hoek.clone(nestedObj);
             var y = Hoek.clone(nestedObj);
@@ -199,7 +220,7 @@ describe('Hoek', function () {
             done();
         });
 
-        it('should clone an object with a prototype', function (done) {
+        it('clones an object with a prototype', function (done) {
 
             var Obj = function () {
 
@@ -216,9 +237,68 @@ describe('Hoek', function () {
             expect(a).to.deep.equal(b);
             done();
         });
+
+        it('reuses cloned Date object', function (done) {
+
+            var obj = {
+                a: new Date()
+            };
+
+            obj.b = obj.a;
+
+            var copy = Hoek.clone(obj);
+            expect(copy.a).to.equal(copy.b);
+            done();
+        });
+
+        it('shallow copies an object with a prototype and isImmutable flag', function (done) {
+
+            var Obj = function () {
+
+                this.value = 5;
+            };
+
+            Obj.prototype.b = function () { return 'c'; };
+            Obj.prototype.isImmutable = true;
+
+            var obj = {
+                a: new Obj()
+            };
+
+            var copy = Hoek.clone(obj);
+
+            expect(obj.a.value).to.equal(5);
+            expect(copy.a.value).to.equal(5);
+            expect(copy.a.b()).to.equal('c');
+            expect(obj.a).to.equal(copy.a);
+            done();
+        });
     });
 
     describe('#merge', function () {
+
+        it('deep copies source items', function (done) {
+
+            var target = {
+                b: 3,
+                d: []
+            };
+
+            var source = {
+                c: {
+                    d: 1
+                },
+                d: [{ e: 1}]
+            };
+
+            Hoek.merge(target, source);
+            expect(target.c).to.not.equal(source.c);
+            expect(target.c).to.deep.equal(source.c);
+            expect(target.d).to.not.equal(source.d);
+            expect(target.d[0]).to.not.equal(source.d[0]);
+            expect(target.d).to.deep.equal(source.d);
+            done();
+        });
 
         it('merges array over an object', function (done) {
 
@@ -424,21 +504,21 @@ describe('Hoek', function () {
             done();
         });
 
-        it('should return null if options is false', function (done) {
+        it('returns null if options is false', function (done) {
 
             var result = Hoek.applyToDefaults(defaults, false);
             expect(result).to.equal(null);
             done();
         });
 
-        it('should return a copy of defaults if options is true', function (done) {
+        it('returns a copy of defaults if options is true', function (done) {
 
             var result = Hoek.applyToDefaults(defaults, true);
             expect(result).to.deep.equal(result);
             done();
         });
 
-        it('should apply object to defaults', function (done) {
+        it('applies object to defaults', function (done) {
 
             var obj = {
                 a: null,
@@ -461,6 +541,100 @@ describe('Hoek', function () {
         });
     });
 
+    describe('#cloneWithShallow', function () {
+
+        it('deep clones except for listed keys', function (done) {
+
+            var source = {
+                a: {
+                    b: 5
+                },
+                c: {
+                    d: 6
+                }
+            };
+
+            var copy = Hoek.cloneWithShallow(source, ['c']);
+            expect(copy).to.deep.equal(source);
+            expect(copy).to.not.equal(source);
+            expect(copy.a).to.not.equal(source.a);
+            expect(copy.b).to.equal(source.b);
+            done();
+        });
+
+        it('returns immutable value', function (done) {
+
+            expect(Hoek.cloneWithShallow(5)).to.equal(5);
+            done();
+        });
+
+        it('returns null value', function (done) {
+
+            expect(Hoek.cloneWithShallow(null)).to.equal(null);
+            done();
+        });
+
+        it('returns undefined value', function (done) {
+
+            expect(Hoek.cloneWithShallow(undefined)).to.equal(undefined);
+            done();
+        });
+
+        it('deep clones except for listed keys (including missing keys)', function (done) {
+
+            var source = {
+                a: {
+                    b: 5
+                },
+                c: {
+                    d: 6
+                }
+            };
+
+            var copy = Hoek.cloneWithShallow(source, ['c', 'v']);
+            expect(copy).to.deep.equal(source);
+            expect(copy).to.not.equal(source);
+            expect(copy.a).to.not.equal(source.a);
+            expect(copy.b).to.equal(source.b);
+            done();
+        });
+    });
+
+    describe('#applyToDefaultsWithShallow', function () {
+
+        it('shallow copies the listed keys from options without merging', function (done) {
+
+            var defaults = {
+                a: {
+                    b: 5,
+                    e: 3
+                },
+                c: {
+                    d: 7,
+                    g: 1
+                }
+            };
+
+            var options = {
+                a: {
+                    b: 4
+                },
+                c: {
+                    d: 6,
+                    f: 7
+                }
+            };
+
+            var merged = Hoek.applyToDefaultsWithShallow(defaults, options, ['a']);
+            expect(merged).to.deep.equal({ a: { b: 4 }, c: { d: 6, g: 1, f: 7 } });
+            expect(merged.a).to.equal(options.a);
+            expect(merged.a).to.not.equal(defaults.a);
+            expect(merged.c).to.not.equal(options.c);
+            expect(merged.c).to.not.equal(defaults.c);
+            done();
+        });
+    });
+
     describe('#unique', function () {
 
         it('should ensure uniqueness within array of objects based on subkey', function (done) {
@@ -479,7 +653,7 @@ describe('Hoek', function () {
 
     describe('#mapToObject', function () {
 
-        it('should return null on null array', function (done) {
+        it('returns null on null array', function (done) {
 
             var a = Hoek.mapToObject(null);
             expect(a).to.equal(null);
@@ -508,7 +682,7 @@ describe('Hoek', function () {
 
     describe('#intersect', function () {
 
-        it('should return the common objects of two arrays', function (done) {
+        it('returns the common objects of two arrays', function (done) {
 
             var array1 = [1, 2, 3, 4, 4, 5, 5];
             var array2 = [5, 4, 5, 6, 7];
@@ -517,7 +691,7 @@ describe('Hoek', function () {
             done();
         });
 
-        it('should return just the first common object of two arrays', function (done) {
+        it('returns just the first common object of two arrays', function (done) {
 
             var array1 = [1, 2, 3, 4, 4, 5, 5];
             var array2 = [5, 4, 5, 6, 7];
@@ -535,14 +709,14 @@ describe('Hoek', function () {
             done();
         });
 
-        it('should return an empty array if either input is null', function (done) {
+        it('returns an empty array if either input is null', function (done) {
 
             expect(Hoek.intersect([1], null).length).to.equal(0);
             expect(Hoek.intersect(null, [1]).length).to.equal(0);
             done();
         });
 
-        it('should return the common objects of object and array', function (done) {
+        it('returns the common objects of object and array', function (done) {
 
             var array1 = [1, 2, 3, 4, 4, 5, 5];
             var array2 = [5, 4, 5, 6, 7];
@@ -554,7 +728,7 @@ describe('Hoek', function () {
 
     describe('#flatten', function () {
 
-        it('should return a flat array', function (done) {
+        it('returns a flat array', function (done) {
 
             var result = Hoek.flatten([1, 2, [3, 4, [5, 6], [7], 8], [9], [10, [11, 12]], 13]);
             expect(result.length).to.equal(13);
@@ -657,11 +831,23 @@ describe('Hoek', function () {
 
             done();
         });
+
+        it('will return a default value if property is not found', function (done) {
+
+            expect(Hoek.reach(obj, 'a.b.q', {default: 'defaultValue'})).to.equal('defaultValue');
+            done();
+        });
+
+        it('will return a default value if path is not found', function (done) {
+
+            expect(Hoek.reach(obj, 'q', {default: 'defaultValue'})).to.equal('defaultValue');
+            done();
+        });
     });
 
     describe('#callStack', function () {
 
-        it('should return the full call stack', function (done) {
+        it('returns the full call stack', function (done) {
 
             var stack = Hoek.callStack();
             expect(stack[0][0]).to.contain('index.js');
@@ -672,7 +858,7 @@ describe('Hoek', function () {
 
     describe('#displayStack ', function () {
 
-        it('should return the full call stack for display', function (done) {
+        it('returns the full call stack for display', function (done) {
 
             var stack = Hoek.displayStack();
             expect(stack[0]).to.contain(Path.normalize('/test/index.js') + ':');
@@ -875,7 +1061,7 @@ describe('Hoek', function () {
 
     describe('Timer', function () {
 
-        it('should return time elapsed', function (done) {
+        it('returns time elapsed', function (done) {
 
             var timer = new Hoek.Timer();
             setTimeout(function () {
@@ -888,7 +1074,7 @@ describe('Hoek', function () {
 
     describe('Bench', function () {
 
-        it('should return time elapsed', function (done) {
+        it('returns time elapsed', function (done) {
 
             var timer = new Hoek.Bench();
             setTimeout(function () {
@@ -934,6 +1120,20 @@ describe('Hoek', function () {
                 expect(Hoek.base64urlEncode(buffer.toString('hex'), 'hex')).to.equal(base64str);
                 done();
             });
+
+            it('works on larger input strings', function (done) {
+
+                var input = Fs.readFileSync(Path.join(__dirname, 'index.js')).toString();
+                var encoded = Hoek.base64urlEncode(input);
+
+                expect(encoded).to.not.contain('+');
+                expect(encoded).to.not.contain('/');
+
+                var decoded = Hoek.base64urlDecode(encoded);
+
+                expect(decoded).to.equal(input);
+                done();
+            });
         });
 
         describe('#base64urlDecode', function () {
@@ -958,13 +1158,13 @@ describe('Hoek', function () {
                 done();
             });
 
-            it('should return error on undefined input', function (done) {
+            it('returns error on undefined input', function (done) {
 
                 expect(Hoek.base64urlDecode().message).to.exist;
                 done();
             });
 
-            it('should return error on invalid input', function (done) {
+            it('returns error on invalid input', function (done) {
 
                 expect(Hoek.base64urlDecode('*').message).to.exist;
                 done();
@@ -1020,14 +1220,14 @@ describe('Hoek', function () {
             done();
         });
 
-        it('should return empty string on falsy input', function (done) {
+        it('returns empty string on falsy input', function (done) {
 
             var a = Hoek.escapeHtml('');
             expect(a).to.equal('');
             done();
         });
 
-        it('should return unchanged string on no reserved input', function (done) {
+        it('returns unchanged string on no reserved input', function (done) {
 
             var a = Hoek.escapeHtml('abc');
             expect(a).to.equal('abc');
@@ -1182,5 +1382,129 @@ describe('Hoek', function () {
             done();
         });
     });
-});
 
+    describe('#transform', function () {
+
+        var source = {
+            address: {
+                one: '123 main street',
+                two: 'PO Box 1234'
+            },
+            zip: {
+                code: 3321232,
+                province: null
+            },
+            title: 'Warehouse',
+            state: 'CA',
+        };
+
+        it('transforms an object based on the input object', function (done) {
+
+            var result = Hoek.transform(source, {
+                'person.address.lineOne': 'address.one',
+                'person.address.lineTwo': 'address.two',
+                'title': 'title',
+                'person.address.region': 'state',
+                'person.address.zip': 'zip.code',
+                'person.address.location': 'zip.province'
+            });
+
+            expect(result).to.deep.equal({
+                person: {
+                    address: {
+                        lineOne: '123 main street',
+                        lineTwo: 'PO Box 1234',
+                        region: 'CA',
+                        zip: 3321232,
+                        location: null
+                    }
+                },
+                title: 'Warehouse'
+            });
+
+            done();
+        });
+
+        it('uses the reach options passed into it', function (done) {
+
+            var schema = {
+                'person.address.lineOne': 'address-one',
+                'person.address.lineTwo': 'address-two',
+                'title': 'title',
+                'person.address.region': 'state',
+                'person.prefix': 'person-title',
+                'person.zip': 'zip-code'
+            };
+            var options = {
+                separator: '-',
+                default: 'unknown'
+            };
+            var result = Hoek.transform(source, schema, options);
+
+            expect(result).to.deep.equal({
+                person: {
+                    address: {
+                        lineOne: '123 main street',
+                        lineTwo: 'PO Box 1234',
+                        region: 'CA'
+                    },
+                    prefix: 'unknown',
+                    zip: 3321232
+                },
+                title: 'Warehouse'
+            });
+
+            done();
+        });
+
+        it('works to create shallow objects', function (done) {
+
+            var result = Hoek.transform(source, {
+                lineOne: 'address.one',
+                lineTwo: 'address.two',
+                title: 'title',
+                region: 'state',
+                province: 'zip.province'
+            });
+
+            expect(result).to.deep.equal({
+                lineOne: '123 main street',
+                lineTwo: 'PO Box 1234',
+                title: 'Warehouse',
+                region: 'CA',
+                province: null
+            });
+
+            done();
+        });
+
+        it('only allows strings in the map', function (done) {
+
+            expect(function () {
+                var result = Hoek.transform(source, {
+                    lineOne: {}
+                });
+            }).to.throw('All mappings must be "." delineated string');
+
+            done();
+        });
+
+        it('throws an error on invalid arguments', function (done) {
+
+            expect(function () {
+
+                var result = Hoek.transform(NaN, {});
+            }).to.throw('Invalid source object: must be null, undefined, or an object');
+
+            done();
+        });
+
+        it('is safe to pass null or undefined', function (done) {
+
+            var result = Hoek.transform(null, {});
+            expect(result).to.deep.equal({});
+
+            done();
+        });
+    });
+});
